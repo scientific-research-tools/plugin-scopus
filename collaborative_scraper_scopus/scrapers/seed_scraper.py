@@ -1,12 +1,18 @@
-from collaborative_scraper.scrapers.extra.articles.scopus_scraper import ScopusScraper, RequestData, Phase
-from collaborative_scraper.parse_html.extra.articles.scopus import ScopusArticle as Article
+from collaborative_scraper_scopus.scrapers.scopus_scraper import ScopusScraper, RequestData, Phase
+from collaborative_scraper_scopus.parse_html.scopus import ScopusArticle as Article
 import logging
 
 logger = logging.getLogger(__name__)
 
 class SeedScraper(ScopusScraper):
-    def __init__(self, *seeds, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, db, seeds: list[int], **kwargs):
+        """
+        Args:
+            db: The store to crawl into.
+            seeds: Paper ids to expand outward from, read from the target's
+                config by the plugin's factory.
+        """
+        super().__init__(db, **kwargs)
         self.current_layer = [self.known_articles[seed] for seed in seeds]
         self.size_layer = len(self.current_layer)
         self.explored = {id for id in seeds}

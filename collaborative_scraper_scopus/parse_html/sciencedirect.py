@@ -1,6 +1,6 @@
-from collaborative_scraper.parse_html.extra.articles.science_article import Article
+from collaborative_scraper_scopus.parse_html.science_article import Article
 from lxml import html
-from collaborative_scraper.utils import safe_int
+from collaborative_scraper_scopus.utils import safe_int
 
 class Sciencedirect_Article(Article):
     def __init__(self, *args, **kwargs):

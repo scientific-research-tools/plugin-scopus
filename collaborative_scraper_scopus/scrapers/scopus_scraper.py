@@ -1,123 +1,35 @@
 from collections.abc import Callable
-from collaborative_scraper.scrapers.base import BaseScraper, RequestData, Phase
-from collaborative_scraper.parse_html.extra.articles.scopus import ScopusArticle as Article, get_papers_citing, get_papers_cited, get_papers_from_keyword
+from collaborative_scraper.api import BaseScraper, RequestData
+from collaborative_scraper_scopus.parse_html.scopus import ScopusArticle as Article, get_papers_citing, get_papers_cited, get_papers_from_keyword
 import logging
 from enum import Enum, auto
 
 logger = logging.getLogger(__name__)
 
 class Phase(Enum):
+    """The steps one server-assigned fetch goes through. DONE = 0 is the value
+    the core checks with is_done(); the rest are ours alone."""
     DONE = 0
     CITING = auto()
     CITED = auto()
-
-def blacklist(article: Article):
-    BLACKLIST = [
-        "chat",
-        "digital",
-        "twin",
-        "industry",
-        "industrial",
-        "iot ",
-        "internet of things",
-        "manufacturing",
-        "artificial intelligence",
-        " ai ",
-        "5.0",
-        "4.0",
-        "5g",
-        "6g",
-        "network",
-        "metaverse",
-        "driving",
-        "brain",
-        "neuro",
-        "face",
-        "sustainable",
-        "sustainability",
-        "city",
-        "cities",
-        "construction",
-        "building",
-        # "cement", # have to remove it to not block "reinforcement"
-        "power plant", # Power ?
-        "blockchain",
-        "financ",
-        "social",
-        "3d print",
-        "batter",
-        "smart",
-        "language",
-        "led",
-        "quantum",
-        "light",
-        "photo",
-        "metal",
-        "carbon",
-        "organic",
-        "hydro",
-        "bio",
-        "cardio",
-        "laser",
-        "sensor",
-        "crystal",
-        "electr",
-        "social",
-        "health",
-        "palpation",
-        "covid",
-        "pandemic",
-        "road",
-        "pedestrian",
-        "swarm",
-        "aerial",
-        "uav",
-        "mobile",
-        "surgical",
-        "surg",
-        "vehicle",
-        "distributed",
-        "lidar",
-
-        "design",
-        "wear",
-        "soft",
-        "future",
-        "multiagent",
-
-        "a survey of augmented reality",
-        "deep reinforcement learning: a survey",
-        "guidelines",
-        "european",
-        "tutorial",
-    ]
-
-    for name in BLACKLIST:
-        if name in article.title.lower():
-            return True
-    return False
+    SEARCH = auto()   # a page of keyword-search results (KeywordScraper only)
 
 class ScopusScraper(BaseScraper):
-    def __init__(self, *args, blacklist: Callable[[Article], bool] = blacklist, **kwargs):
-        super().__init__(*args, blacklist = blacklist, **kwargs)
+    def __init__(self, db, *, skip: Callable[[Article], bool] = lambda article: False):
+        """
+        Args:
+            db: The store to crawl into, already opened by the plugin's factory.
+            skip: Predicate over an article; ``True`` means never explore it.
+                Built by the factory from the target's config (see the
+                ``blacklist`` key), so the config decides what to filter and
+                this class only decides when to ask.
+        """
+        super().__init__(db)
+        self.skip = skip
         self.known_articles = {article.id : article for article in self.db.get_articles()}
         self.candidate_queue = [article for article in self.known_articles.values() if not article.explored]
         logger.debug("candidate_queue with %d elements", len(self.candidate_queue))
-        self.debug_counter = 0
         self.request_stream = self._request_generator()
-
-    def _pop_next_article(self) -> Article | None:
-        if self.debug_counter >= 2:
-            return None
-
-        if len(self.candidate_queue) != 0:
-            next_article = max(self.candidate_queue)
-            self.candidate_queue.remove(next_article)
-            self.candidate_waiting.append(next_article)
-            self.debug_counter += 1
-        else:
-            next_article = None
-        return next_article
 
     def unknown_page(self, articles: list[Article], url: str):
         if articles is not None:
@@ -241,8 +153,8 @@ class ScopusScraper(BaseScraper):
         """
         Generator over the default frontier: yields the next element to fetch,
         or ``None`` when nothing is queued. An out-of-band
-        ``db.pop_next_fetch_request()`` takes priority; blacklisted elements are
-        skipped.
+        ``db.pop_next_fetch_request()`` takes priority; elements the ``skip``
+        predicate rejects are dropped.
         """
         while True:
             # An explicit fetch request stored in the database wins over the
@@ -258,7 +170,7 @@ class ScopusScraper(BaseScraper):
                 if next_article is None:
                     yield None
                     continue
-                if self.blacklist(next_article):
+                if self.skip(next_article):
                     logger.info("[blacklisted] %s", next_article)
                     continue
             yield next_article

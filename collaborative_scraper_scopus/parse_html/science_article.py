@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collaborative_scraper.parse_html.base import ScrapedElement
+from collaborative_scraper.api import ScrapedElement
 import json
 
 class Article(ScrapedElement):

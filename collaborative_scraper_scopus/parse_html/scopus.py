@@ -1,10 +1,9 @@
 from __future__ import annotations
-from collaborative_scraper.parse_html.extra.articles.science_article import Article
+from collaborative_scraper_scopus.parse_html.science_article import Article
 import logging
 import re
-from collaborative_scraper.utils import save_snapshot, Path
 from lxml import html
-from collaborative_scraper.utils import formatted_int, safe_int, guarded_int
+from collaborative_scraper_scopus.utils import formatted_int, safe_int, guarded_int
 
 logger = logging.getLogger(__name__)
 

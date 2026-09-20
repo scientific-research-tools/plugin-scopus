@@ -1,11 +1,12 @@
 import sqlite3
 import json
-from collaborative_scraper.databases.base import ScraperDatabase
-from collaborative_scraper.parse_html.extra.articles.science_article import Article
+from collaborative_scraper.api import ScraperDatabase
+from collaborative_scraper_scopus.parse_html.science_article import Article
 from collections import Counter
 
 class ArticleDatabase(ScraperDatabase):
-    db_name = "debug.db"
+    # No db_name: the file is named in config.toml (db_name / db_file), and the
+    # factory opens whatever path the core resolved from it.
 
     def _init_db(self) -> None:
         """Create tables if they don't exist"""
