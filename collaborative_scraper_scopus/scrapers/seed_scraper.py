@@ -13,6 +13,9 @@ class SeedScraper(ScopusScraper):
                 config by the plugin's factory.
         """
         super().__init__(db, **kwargs)
+        missing = [seed for seed in seeds if seed not in self.known_articles]
+        if missing:
+            raise SystemExit(f"seeds not in the database yet: {missing}.")
         self.current_layer = [self.known_articles[seed] for seed in seeds]
         self.size_layer = len(self.current_layer)
         self.explored = {id for id in seeds}
