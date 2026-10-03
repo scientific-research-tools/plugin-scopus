@@ -1,8 +1,5 @@
 # Scopus plugin
 
-> **⚠ Currently broken.** Scopus changed its site, and search parameters are no longer passed
-> as a GET request. The parser in this plugin relied on that GET encoding.
-
 A plugin for the [Collaborative Scraper](https://github.com/Angelo942/collaborative_scraper_server)
 that crawls **scientific literature** and reconstructs the **citation graph** between papers.
 

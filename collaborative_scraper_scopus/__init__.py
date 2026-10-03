@@ -5,6 +5,7 @@ from .scrapers.scopus_scraper import ScopusScraper
 from .scrapers.seed_scraper import SeedScraper
 from .scrapers.keyword_scraper import KeywordScraper
 from .scrapers.popular_scraper import PopularScraper
+from .scrapers.test_scraper import TestScraper
 
 def register(reg):
     reg.project("scopus")                           # owns the "scopus:" namespace
@@ -16,6 +17,7 @@ def register(reg):
     reg.scraper("keyword_scraper", _keyword)
     reg.scraper("popular_scraper", _popular)
     reg.scraper("debug", _normal)
+    reg.scraper("test_scraper", _test)
 
 # ---- what the factories read out of config.toml ----
 #
@@ -78,3 +80,7 @@ def _keyword(cfg):
         raise _missing("scopus:keyword_scraper", "keywords",
                        '["shared control teleoperation", ...]')
     return KeywordScraper(_open(cfg), keywords, skip=_skip_from(cfg))
+
+def _test(cfg):
+    # no database: the test scraper only logs what it sees
+    return TestScraper(None, int(cfg.get("article_id", 105044022378)))

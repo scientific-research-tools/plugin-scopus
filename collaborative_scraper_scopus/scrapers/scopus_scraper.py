@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from collaborative_scraper.api import BaseScraper, RequestData
+from collaborative_scraper.api import BaseScraper, RequestData, Request, Result
 from collaborative_scraper_scopus.parse_html.scopus import ScopusArticle as Article, get_papers_citing, get_papers_cited, get_papers_from_keyword
 import logging
 from enum import Enum, auto
@@ -31,11 +31,10 @@ class ScopusScraper(BaseScraper):
         logger.debug("candidate_queue with %d elements", len(self.candidate_queue))
         self.request_stream = self._request_generator()
 
-    def unknown_page(self, articles: list[Article], url: str):
-        if articles is not None:
-            logger.debug("received %d articles", len(articles))
-            for article in articles:
-                self.update(article)
+    def unknown_page(self, result: Result):
+        logger.debug("received %d articles from %s", len(result.elements), result.url)
+        for article in result.elements:
+            self.update(article)
 
     def update(self, article: Article, request_data: RequestData = None) -> None:
         """
@@ -98,7 +97,7 @@ class ScopusScraper(BaseScraper):
                 request_data.requested_element.cited = []
                 self.db.update_element(request_data.requested_element)
 
-    def _fetch_related_papers(self, request_data: RequestData) -> str:
+    def _fetch_related_papers(self, request_data: RequestData) -> Request:
         if request_data.fetch_phase == Phase.CITING:
             assert len(request_data.requested_element.citing) % 200 == 0, request_data.requested_element
             return get_papers_citing(request_data.requested_element, len(request_data.requested_element.citing))
@@ -108,7 +107,7 @@ class ScopusScraper(BaseScraper):
                 self.clear_references(request_data)
             return get_papers_cited(request_data.requested_element, len(request_data.requested_element.cited))
 
-    def generate_request(self, request_data: RequestData) -> tuple[str, RequestData]:
+    def generate_request(self, request_data: RequestData) -> tuple[Request, RequestData]:
         logger.debug("%s", request_data)
         if request_data is None or request_data.fetch_phase == Phase.DONE:
             next_element = next(self.request_stream)
@@ -130,8 +129,8 @@ class ScopusScraper(BaseScraper):
         if request_data.fetch_phase == Phase.DONE:
             return self.generate_request(request_data) # Could also just call with None
 
-        next_url = self._fetch_related_papers(request_data)
-        return next_url, request_data
+        next_request = self._fetch_related_papers(request_data)
+        return next_request, request_data
 
     def _pop_next_article(self) -> Article | None:
         """

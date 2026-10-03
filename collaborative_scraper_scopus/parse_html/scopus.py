@@ -1,7 +1,10 @@
 from __future__ import annotations
 from collaborative_scraper_scopus.parse_html.science_article import Article
+import copy
 import logging
 import re
+from urllib.parse import urlencode
+from collaborative_scraper.api import Request, GETRequest, FETCHRequest, RequestData, Result
 from lxml import html
 from collaborative_scraper_scopus.utils import formatted_int, safe_int, guarded_int
 
@@ -73,23 +76,22 @@ class ScopusArticle(Article):
     #         self._explored = len(self.cited) == self.num_cited and len(self.citing) == self.num_citing and self.num_cited % 200 != 0: # I accept that if I have exactly 200 papers I won't detect that we finished exploring it
     #     return self._explored
 
-def extract_articles_from_results(html_page: str) -> list[Article] | None:
-    page = html.fromstring(html_page)
+def extract_articles_from_results(page: html.HtmlElement) -> list[Article] | None:
     articles = []
 
     # If message No article match is visible return []
-    comment = page.xpath("/html/body/div[1]/div/div[1]/div/div/div[3]/micro-ui/document-search-results-page/div[1]/section[2]/div/div[2]/div/div[1]")[0]
+    comment = page.xpath("/html/body/div/div/main/div/section/div[1]/section[2]/div/div[2]/div/div[1]")[0]
     if comment.attrib["style"] == "display: block;": # != 'display: none;':
         return articles
 
     try:
-        num_articles = formatted_int(page.xpath("/html/body/div[1]/div/div[1]/div/div/div[3]/micro-ui/document-search-results-page/div[1]/section[1]/div[3]/div/div/div[1]/h2")[0].text_content().split()[0])
+        num_articles = formatted_int(page.xpath("/html/body/div/div/main/div/section/div[1]/section[1]/div[3]/div/div/div[1]/h2")[0].text_content().split()[0])
     except IndexError:
         logger.error("IndexError -> Page didn't load")
         return None # this mean that the page didn't load properly
 
     num_articles -= (num_articles // 200) * 200
-    elements = page.xpath("/html/body/div[1]/div/div[1]/div/div/div[3]/micro-ui/document-search-results-page/div[1]/section[2]/div/div[2]/div/div[2]/div/div[2]/div[1]/table/tbody/tr")
+    elements = page.xpath("/html/body/div/div/main/div/section/div[1]/section[2]/div/div[2]/div/div[2]/div/div[2]/div[1]/table/tbody/tr")
     # for i, element in enumerate(elements[1::3]):
     i = 1
     while i < len(elements):
@@ -110,6 +112,33 @@ def extract_articles_from_results(html_page: str) -> list[Article] | None:
         raise Exception("Missing articles -> Make sure to set max number per page.")
     return articles
 
+# "CITEID ( 105044022378 )" -> field "CITEID", argument "105044022378"
+QUERY_PATTERN = re.compile(r'^\s*([A-Z-]+)\s*\(\s*(.*?)\s*\)\s*$', re.DOTALL)
+EID_PREFIX = "2-s2.0-"
+
+def extract_query_metadata(page: html.HtmlElement) -> dict | None:
+    """
+    Read back the query a results page answers, from the search box.
+
+    The results url only carries a searchId now, so the query itself has to come
+    from the page. Returns ``{"query", "field", "argument"}``, where ``argument``
+    is the article id (int) for CITEID / REFEID and the search text otherwise,
+    or ``None`` if the box is missing or holds something we don't recognise.
+    """
+    try:
+        query = page.xpath('//*[@id="advancedQueryTextArea"]')[0].text_content().strip()
+    except IndexError:
+        logger.warning("no query box on the results page")
+        return None
+    match = QUERY_PATTERN.match(query)
+    if match is None:
+        logger.warning("could not parse query %r", query)
+        return {"query": query, "field": None, "argument": None}
+    field, argument = match.groups()
+    if field in ("CITEID", "REFEID"):
+        argument = guarded_int(argument.removeprefix(EID_PREFIX), f"article id from query {query}")
+    return {"query": query, "field": field, "argument": argument}
+
 def extract_article_info_from_page(html_page: str, path: str) -> Article:
     page = html.fromstring(html_page)
     id = guarded_int(path.split("/")[-1], f"article id from path {path}")
@@ -117,27 +146,38 @@ def extract_article_info_from_page(html_page: str, path: str) -> Article:
     article.load_from_article_page(page)
     return article
 
-def extract_elements(html_page: str, path: str) -> list[Article]:
-    if path.startswith("/results"):
-        return extract_articles_from_results(html_page)
-    # pages can also be a search result and that would break
-    elif path.startswith("/pages"):
-        return [extract_article_info_from_page(html_page, path)]
+def extract_elements(html_page: str, path: str, get_parameters: dict, post_parameters: dict) -> Result | None:
+    # the search page also lives under /pages, so it has to be matched before the article page
+    if path.startswith("/pages/search/publications") or path.startswith("/results"):
+        page = html.fromstring(html_page)
+        articles = extract_articles_from_results(page)
+        return None if articles is None else Result(articles, extract_query_metadata(page))
+    elif path.startswith("/pages/publications"):
+        return Result([extract_article_info_from_page(html_page, path)])
     else:
         logger.warning("page %s is not handled on scopus!", path)
-        return []
+        return Result([])
 
-def get_papers_citing(article: Article, offset: int = 0) -> str: # the settings are not respected, so careful
-    if offset:
-        return f"https://www.scopus.com/results/results.uri?s=ref%282-s2.0-{article.id:010d}%29&sot=cite&sdt=a&origin=resultslist&src=s&sort=cp-f&limit=200&offset={offset}"
-    return f"https://www.scopus.com/results/results.uri?s=ref%282-s2.0-{article.id:010d}%29&sot=cite&sdt=a&origin=resultslist&src=s&sort=cp-f&limit=200"
+SEARCH_STORE_URL = "https://www.scopus.com/gateway/search-management-service/searchmanager/store"
+SEARCH_RESULTS_URL = "https://www.scopus.com/pages/search/publications"
 
-def get_papers_cited(article: Article, offset: int = 0) -> str:
-    if offset:
-        return f"https://www.scopus.com/results/results.uri?s=CITEID({article.id:010d})&sot=record&sdt=references&origin=recordpage&src=s&sort=cp-f&limit=200&offset={offset}"
-    return f"https://www.scopus.com/results/results.uri?s=CITEID({article.id:010d})&sot=record&sdt=references&origin=recordpage&src=s&sort=cp-f&limit=200"
+TEMPLATE_ARGS = {"searchRequest":{"query":"","cluster":[],"facets":{},"clusterRowData":"","facetFilters":[],"filters":{},"documentType":"s","searchSettings":{"sort":"cp-f","offset":0,"limit":200},"serviceValues":{"origin":"searchbasic","sdt":"b","sot":"b"},"facetOperation":None,"citedBy":{"citeCnt":None,"cite":None,"citedAuthorId":None,"citeDocType":None},"refinement":None}}
 
-def get_papers_from_keyword(keyword: str, offset: int = 0) -> str:
-    if offset:
-        return f"https://www.scopus.com/results/results.uri?s=TITLE-ABS-KEY%28{keyword}%29&limit=200&origin=searchbasic&sort=cp-f&src=s&sot=b&sdt=b&offset={offset}"
-    return f"https://www.scopus.com/results/results.uri?s=TITLE-ABS-KEY%28{keyword}%29&limit=200&origin=searchbasic&sort=cp-f&src=s&sot=b&sdt=b"
+def _open_search_results(response: dict, request_data: RequestData) -> GETRequest:
+    # the store call only registers the query, the results live on a page keyed by its searchId
+    return GETRequest(SEARCH_RESULTS_URL, {'searchId': response['searchId']})
+
+def _search(query: str, offset: int) -> FETCHRequest:
+    post_args = copy.deepcopy(TEMPLATE_ARGS) # nested dicts, a shallow copy would edit the template
+    post_args["searchRequest"]["query"] = query
+    post_args["searchRequest"]["searchSettings"]["offset"] = offset
+    return FETCHRequest(SEARCH_STORE_URL, post_args, _open_search_results)
+
+def get_papers_citing(article: Article, offset: int = 0) -> Request:
+    return _search(f"REFEID(2-s2.0-{article.id:010d})", offset)
+
+def get_papers_cited(article: Article, offset: int = 0) -> Request:
+    return _search(f"CITEID({article.id:010d})", offset)
+
+def get_papers_from_keyword(keyword: str, offset: int = 0) -> Request:
+    return _search(f"TITLE-ABS-KEY({keyword})", offset)

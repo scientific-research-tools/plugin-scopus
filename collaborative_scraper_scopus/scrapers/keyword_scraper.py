@@ -1,4 +1,5 @@
 from collaborative_scraper_scopus.scrapers.scopus_scraper import RequestData, Phase
+from collaborative_scraper.api import Request
 from collaborative_scraper_scopus.scrapers.seed_scraper import SeedScraper
 from collaborative_scraper_scopus.parse_html.scopus import ScopusArticle as Article, get_papers_from_keyword
 import logging
@@ -82,7 +83,7 @@ class KeywordScraper(SeedScraper):
             yield Query(self.pending.pop(0))
         yield from super()._request_generator()
 
-    def generate_request(self, request_data: RequestData = None) -> tuple[str, RequestData]:
+    def generate_request(self, request_data: RequestData = None) -> tuple[Request, RequestData]:
         if request_data is None or request_data.fetch_phase == Phase.DONE:
             next_element = next(self.request_stream)
             if next_element is None:
