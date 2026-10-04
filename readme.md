@@ -46,9 +46,9 @@ the server.
 
 | Target | Strategy |
 |--------|----------|
-| `scopus:popular_scraper` | Expands an existing database. Loads every unexplored paper, works through them most-cited first, fetches each paper's *citing* then *cited* papers, and queues whatever is newly discovered. |
-| `scopus:seed_scraper` | Grows a focused graph around a few selected key papers. Starts from hand-picked seed ids and expands **breadth-first, layer by layer**, following only the papers that *cite* a paper and keeping for the next layer only those with at least 5 citations of their own. |
-| `scopus:keyword_scraper` | Bootstraps from a topic instead of paper ids. Runs a Scopus title/abstract/keyword search per keyword, then hands the matching papers to the seed strategy. Searches are cached in the database. |
+| `scopus:keyword_scraper` | Runs a Scopus title/abstract/keyword search per keyword, then expands the reference tree from the results only following the papers that *cite* a paper found before. |
+| `scopus:seed_scraper` | Grows a focused graph around a few selected key papers. |
+| `scopus:popular_scraper` | Expands an existing database. Loads every unexplored paper and fetches each paper's *citing* then *cited* papers. |
 
 ---
 
@@ -75,7 +75,7 @@ keywords = [
 ## Running
 
 ```bash
-python3 -m collaborative_scraper.server scopus:seed_scraper
+python3 -m collaborative_scraper.server scopus:popular_scraper
 ```
 
 Then go visit an article on Scopus, and start the [browser extension](https://github.com/Angelo942/collaborative_scraper_extension) to send the pages to the server.
@@ -106,12 +106,10 @@ Override it per project or per target:
 
 ```toml
 [projects.scopus]
-folder = "/mnt/data/scopus"      # everything the project writes (database + snapshots)
-db_folder = "/mnt/fast/scopus"   # just the databases, if different
+folder = "/mnt/data/scopus"      # Project directory where all the databases are located
 
 [targets."scopus:keyword_scraper"]
-db_name = "keywords.db"          # only the file name
-# db_file = "/tmp/scratch.db"    # or the whole path, ignoring folder and name
+db_name = "keywords.db"          # only the database name
 ```
 
 Print the resolved path for a specific target without starting a crawl:
