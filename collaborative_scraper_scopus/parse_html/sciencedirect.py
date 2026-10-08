@@ -29,5 +29,5 @@ def extract_article_info(html_page: str) -> Article:
     article.load_from_page(page)
     return article
 
-def extract_elements(html_page: str, path: str) -> list[Article] | None:
+def extract_elements(html_page: str, url: str, request_data) -> list[Article] | None:
     return [extract_article_info(html_page)]

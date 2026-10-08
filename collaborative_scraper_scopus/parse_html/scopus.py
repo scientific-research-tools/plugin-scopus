@@ -3,7 +3,7 @@ from collaborative_scraper_scopus.parse_html.science_article import Article
 import copy
 import logging
 import re
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from collaborative_scraper.api import Request, GETRequest, FETCHRequest, RequestData, Result
 from lxml import html
 from collaborative_scraper_scopus.utils import formatted_int, safe_int, guarded_int
@@ -146,7 +146,8 @@ def extract_article_info_from_page(html_page: str, path: str) -> Article:
     article.load_from_article_page(page)
     return article
 
-def extract_elements(html_page: str, path: str, get_parameters: dict, post_parameters: dict) -> Result | None:
+def extract_elements(html_page: str, url: str, request_data: RequestData | None) -> Result | None:
+    path = urlsplit(url).path
     # the search page also lives under /pages, so it has to be matched before the article page
     if path.startswith("/pages/search/publications") or path.startswith("/results"):
         page = html.fromstring(html_page)

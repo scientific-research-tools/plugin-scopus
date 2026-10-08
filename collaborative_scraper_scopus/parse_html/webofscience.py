@@ -31,7 +31,7 @@ class Webofscience_Article(Article):
 
         return True
 
-def extract_elements(html_page: str, path: str) -> list[Article] | None:
+def extract_elements(html_page: str, url: str, request_data) -> list[Article] | None:
     articles = []
     page = html.fromstring(html_page)
     for i, element in enumerate(page.xpath("/html/body/app-wos/main/div/div/div[2]/div/div/div[2]/app-input-route/app-base-summary-component/div/div[2]/app-records-list/app-record")):
